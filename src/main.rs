@@ -2,79 +2,100 @@
 // #[warn(unused_variables)]
 #![allow(unused)]
 
-mod amd;
-mod constant;
-mod error;
-mod gpu;
-mod intel;
-mod model;
-mod pow;
-mod serder;
-mod worker;
-
 #[macro_use]
 extern crate bincode;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate hex;
+extern crate num_cpus;
+
+#[macro_use]
+extern crate log;
+extern crate env_logger;
+
+mod amd;
+mod config;
+mod constant;
+mod error;
+mod gpu;
+mod intel;
+mod model;
+mod nvidia;
+mod pow;
+mod serder;
+mod worker;
 
 use clap::{App, Arg, SubCommand};
-use std::hash::Hash;
 
 fn main() {
+    let cpu = num_cpus::get();
+    let num_cpu = format!("{}", cpu);
+    let num = num_cpu.as_str();
     let matches = App::new("alephium miner")
         .version("1.0.0")
         .author("知命")
-        .about("Does awesome things")
+        .about("alephium miner server")
         .arg(
-            Arg::with_name("config")
-                .short("c")
-                .long("config")
-                .value_name("FILE")
-                .help("Sets a custom config file")
+            Arg::with_name("ip")
+                .short("i")
+                .long("ip")
+                .value_name("ip")
+                .help("set connect alephium node miner ip")
+                .default_value("127.0.0.1")
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("INPUT")
-                .help("Sets the input file to use")
-                .required(true)
-                .index(1),
+            Arg::with_name("port")
+                .short("p")
+                .long("port")
+                .value_name("port")
+                .help("set connect alephium node miner port")
+                .default_value("10973")
+                .takes_value(true),
         )
         .arg(
-            Arg::with_name("v")
-                .short("v")
-                .multiple(true)
-                .help("Sets the level of verbosity"),
+            Arg::with_name("miner_type")
+                .short("t")
+                .long("type")
+                .value_name("miner_type")
+                .help("miner type: cpu、amd、nvidia")
+                .default_value("cpu")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("worker")
+                .short("w")
+                .long("worker")
+                .value_name("worker")
+                .help("worker number")
+                .default_value(num)
+                .takes_value(true),
         )
         .get_matches();
-
-    // Gets a value for config if supplied by user, or defaults to "default.conf"
-    let config = matches.value_of("config").unwrap_or("default.conf");
-    println!("Value for config: {}", config);
-
-    // Calling .unwrap() is safe here because "INPUT" is required (if "INPUT" wasn't
-    // required we could have used an 'if let' to conditionally get the value)
-    println!("Using input file: {}", matches.value_of("INPUT").unwrap());
-
     // Vary the output based on how many times the user used the "verbose" flag
     // (i.e. 'myprog -v -v -v' or 'myprog -vvv' vs 'myprog -v'
-    match matches.occurrences_of("v") {
-        0 => println!("No verbose info"),
-        1 => println!("Some verbose info"),
-        2 => println!("Tons of verbose info"),
-        3 | _ => println!("Don't be crazy"),
-    }
+    // match matches.occurrences_of("v") {
+    //     0 => println!("No verbose info"),
+    //     1 => println!("Some verbose info"),
+    //     2 => println!("Tons of verbose info"),
+    //     3 | _ => println!("Don't be crazy"),
+    // }
+    env_logger::init();
+    info!("starting up");
 
-    // You can handle information about subcommands by requesting their matches by name
-    // (as below), requesting just the name used, or both at the same time
-    if let Some(matches) = matches.subcommand_matches("test") {
-        if matches.is_present("debug") {
-            println!("Printing debug info...");
-        } else {
-            println!("Printing normally...");
-        }
-    }
+    let ip = matches.value_of("ip").unwrap_or("127.0.0.1").to_string();
+    let port = matches.value_of("port").unwrap_or("10973").to_string();
+    let miner_type = matches.value_of("miner_type").unwrap_or("cpu").to_string();
+    let worker_num = matches.value_of("worker").unwrap_or(num);
+    let config = config::Config {
+        ip,
+        port,
+        miner_type,
+        worker_num: worker_num.parse::<usize>().unwrap_or(cpu),
+    };
+
+    info!("{:?}",config);
 
     // more program logic goes here...
 }

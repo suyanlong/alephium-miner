@@ -1,0 +1,21 @@
+before_script:
+  - make clean
+
+after_script:
+  - make clean
+
+stages:
+  - build
+  - test
+
+build:
+  stage: build
+  script:
+    - make check
+    - make
+
+test:
+  stage: test
+  script:
+    - make test
+
