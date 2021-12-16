@@ -1,0 +1,31 @@
+[package]
+name = "alephium-miner"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+blake3 = "1.2.0"
+#digest = "0.10.1"
+#rayon = "1.5.1"
+#bytes = "1.1.0"
+#nom = "7.1.0" #nom is a parser combinators library written in Rust
+#bincode_derive = { path = "derive", version = "2.0.0-alpha.1", optional = true }
+#byteorder = "1.4.3"
+hex = "0.4.3"
+serde = "1.0.131"
+serde_derive = "1.0.131"
+toml = "0.5.8"
+base64 = "0.13.0"
+rand = "0.8.4"
+clap = "2.34.0"
+env_logger = "0.9.0"
+dirs = "4.0.0"
+bincode = { git = "https://github.com/suyanlong/bincode",branch = "trunk" }
+parking_lot = "0.11.2"
+
+
+
+
+

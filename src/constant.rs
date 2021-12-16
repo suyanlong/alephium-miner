@@ -1,0 +1,4 @@
+const GROUP_NUMS: i32 = 4;
+const CHAIN_NUMS: i32 = 16;
+const PARALLEL_MINING_WORKS: i32 = 16;
+const MINING_STEPS: i32 = 100000;
