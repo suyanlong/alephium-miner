@@ -1,6 +1,7 @@
 #CARGO=RUSTFLAGS='-F warnings -A deprecated' cargo
 CARGO=cargo
 
+build:debug
 
 debug:
 	$(CARGO) build -j 1 --all

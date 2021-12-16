@@ -3,6 +3,7 @@ use bincode::{
     config::Configuration, de::Decoder, enc::Encoder, error::DecodeError, error::EncodeError,
     Decode, Encode,
 };
+use std::default::Default;
 use std::fmt;
 use std::mem::take;
 
@@ -31,6 +32,12 @@ pub enum Body {
     SubmitResult(SubmitResult),
 }
 
+impl Default for Body {
+    fn default() -> Self {
+        Body::Job(Jobs::default())
+    }
+}
+
 impl Clone for Body {
     #[must_use = "cloning is often expensive and is not expected to have side effects"]
     fn clone(&self) -> Self {
@@ -41,7 +48,7 @@ impl Clone for Body {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Message {
     len: u32, //len = len(kind) + len(body)[👌];len = len + len(kind) + len(body)[🤯];
     kind: u8, //1 = Jobs ; 0 = SubmitResult
