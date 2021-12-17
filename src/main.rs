@@ -12,15 +12,18 @@ extern crate num_cpus;
 #[macro_use]
 extern crate log;
 extern crate blake3;
+extern crate chrono;
 extern crate env_logger;
 extern crate threadpool;
 extern crate tokio;
 extern crate tokio_util;
+extern crate uuid;
 
 mod amd;
 mod config;
 mod connection;
 mod constant;
+mod counter;
 mod error;
 mod frame;
 mod gpu;
@@ -30,11 +33,14 @@ mod model;
 mod nvidia;
 mod pow;
 mod serder;
+mod task;
 mod worker;
 
 use crate::frame::Frame;
+use crate::miner::Miner;
 use crate::model::Message;
 use clap::{App, Arg, SubCommand};
+use std::cmp::min;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 
@@ -99,43 +105,6 @@ async fn main() {
 
     info!("{:?}", config);
     let address = format!("{}:{}", config.ip, config.port);
-    let option = bincode::config::Configuration::standard()
-        .with_big_endian()
-        .with_no_limit()
-        .with_fixed_int_encoding();
-
-    // more program logic goes here...
-    let (tx, mut rx) = mpsc::channel::<model::Message>(2 * config.worker_num);
-    let mut client = tokio::net::TcpStream::connect(address).await.unwrap();
-    // let mut conn = connection::Connection::new(client);
-    let (mut r, mut w) = connection::pair(client);
-    let left_half = tokio::spawn(async move {
-        loop {
-            match r.read_frame().await {
-                Ok(val) => match val {
-                    Some(val) => {
-                        if let Frame::Bulk(bytes) = val {
-                            let (msg, size) =
-                                bincode::decode_from_slice::<Message, _>(bytes.as_ref(), option)
-                                    .expect("decode_from_slice msg error");
-                            //send worker
-                        }
-                    }
-                    None => unreachable!(),
-                },
-                Err(err) => error!("read_frame error {}", err),
-            }
-        }
-    });
-    let right_half = tokio::spawn(async move {
-        if let Some(val) = rx.recv().await {
-            let data = bincode::encode_to_vec(val, option).expect("encode_to_vec msg error");
-            //send server
-            if let Err(err) = w.write_frame(&Frame::Bulk(data.into())).await {
-                error!("write_frame error {}", err);
-            }
-        }
-    });
-    left_half.await;
-    right_half.await;
+    let mut miner = Miner::new(config);
+    miner.work().await;
 }

@@ -1,57 +1,148 @@
-use crate::constant;
+use crate::counter::Counter;
 use crate::model;
+use crate::model::{Job, WorkUnit};
+use crate::task::Task;
+use crate::{constant, Message};
 use blake3;
 use blake3::{hash, Hash};
+use chrono;
+use chrono::Timelike;
+use futures::future::join;
+use std::collections::HashMap;
+use std::mem::take;
+use std::sync::mpsc as stdmpsc;
 use std::sync::{atomic, Arc};
+use std::thread::sleep;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
+use uuid;
 
+//单个线程的算力
 pub struct Worker {
     worker_id: String,                //矿工号
-    hash_rate: u64,                   //算力
-    hash_count: u64,                  //计算次数
-    task_count: u64,                  //任务计数
-    tasked_count: u64,                //已经完成的任务
-    free_tasked_count: u64,           //释放掉的任务
-    miner_setup_time: u64,            //每次计算任务的开始时间。
+    counter: Counter,                 //统计器
     miner_hash_limit: u64,            //单次任务挖矿最大限制，主动放弃当前任务。
+    current_nonce: [u8; 24],          //当前nonce
+    increase_nonce: u64,              //递增值
     is_free: Arc<atomic::AtomicBool>, //被动通知需要下拉最新的任务。
-    current_task: model::Job,         //当前计算的任务
-    nonce: [u8; 24],                  //nonce
+    sender: mpsc::Sender<Task>,       //???
+    rx: stdmpsc::Receiver<model::WorkUnit>,
+    tx: stdmpsc::Sender<model::WorkUnit>,
+    // current_task: Task,                   //当前计算的任务
 }
 
 pub struct ArcRef {
-    worker_id: String,
+    id: String,
     is_free: Arc<atomic::AtomicBool>,
+    tx: stdmpsc::Sender<model::WorkUnit>,
+}
+
+impl ArcRef {
+    pub fn work_id(&self) -> String {
+        self.id.clone()
+    }
 }
 
 impl Worker {
-    fn start() {}
+    pub fn new(sender: Sender<Task>) -> Worker {
+        let (tx, rx) = stdmpsc::channel();
+        Worker {
+            worker_id: uuid::Uuid::default().to_string(),
+            miner_hash_limit: 1000000,
+            is_free: Arc::new(Default::default()),
+            // current_task: Default::default(),
+            current_nonce: Default::default(),
+            counter: Counter::new(),
+            increase_nonce: 0,
+            sender,
+            rx,
+            tx,
+        }
+    }
 
-    fn work() {}
+    pub fn work(&mut self) {
+        match self.rx.recv() {
+            Ok(val) => match val {
+                WorkUnit::Job(mut job) => {
+                    let (status, count) = self.mining(&mut job);
+                    info!("worker id: {}, from: {}, to: {}, target: {:?}, header: {:?}, current_nonce: {:?}, status: {}",
+                           self.worker_id,job.from,job.to,job.target,job.header,self.current_nonce,status);
+                    let task = Task::new()
+                        .with_job(job.clone())
+                        .with_nonce(self.current_nonce)
+                        .with_status(status)
+                        .with_hash_count(count)
+                        .build();
+
+                    self.counter.add(task.clone());
+                    self.counter.inc_hash_count(count);
+                    self.sender.blocking_send(task);
+                }
+                WorkUnit::SubmitRes(id, ret) => {}
+            },
+            Err(err) => {
+                error!("worker: {} recv data error: {}", self.worker_id, err);
+            }
+        }
+    }
+
+    fn increase_nonce(&mut self) {
+        self.increase_nonce += 1;
+    }
+
     fn reset(&mut self) {
         self.reset_nonce()
     }
 
-    fn arc_ref(&self) -> ArcRef {
+    fn mining(&mut self, job: &mut Job) -> (usize, u64) {
+        use std::sync::atomic;
+        let mut count = 0;
+        loop {
+            let double_hash = self.double2(job);
+            let is = Worker::check_hash(
+                double_hash,
+                job.target.clone(),
+                job.from.clone(),
+                job.to.clone(),
+            );
+            self.increase_nonce();
+            count += 1;
+            if is {
+                break (0, count);
+            }
+            if count > self.miner_hash_limit {
+                break (1, count);
+            }
+            if self.is_free.load(atomic::Ordering::Relaxed) {
+                break (2, count);
+            }
+        }
+    }
+
+    pub fn arc_ref(&self) -> ArcRef {
         ArcRef {
-            worker_id: self.worker_id.clone(),
+            id: self.worker_id.clone(),
             is_free: self.is_free.clone(),
+            tx: self.tx.clone(),
         }
     }
 
     fn reset_nonce(&mut self) {
-        self.nonce = self.nonce.each_mut().map(|mut val| {
+        self.current_nonce = self.current_nonce.each_mut().map(|mut val| {
             *val = rand::random::<u8>();
             *val
         });
     }
 
-    fn mining(&mut self) {
-        use std::sync::atomic;
-        loop {
-            if self.is_free.load(atomic::Ordering::Relaxed) {
-                return;
-            }
-        }
+    fn double2(&mut self, job: &Job) -> Vec<u8> {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(&self.current_nonce);
+        hasher.update(job.header.as_slice());
+        let hash1 = hasher.finalize();
+
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(hash1.as_bytes());
+        hasher.finalize().as_bytes().to_vec()
     }
 
     fn check_target(hash: Vec<u8>, target: Vec<u8>) -> bool {

@@ -4,22 +4,20 @@ use bincode::{
     Decode, Encode,
 };
 use std::default::Default;
-use std::fmt;
-use std::mem::take;
 
-#[derive(Encode, Decode, PartialEq, Debug, Clone)]
+#[derive(Encode, Decode, PartialEq, Debug, Clone, Default)]
 pub struct Job {
-    from: u32,
-    to: u32,
-    header: Blob, //ByteString hash
-    txs: Blob,    //ByteString hash
-    target: Blob, //BigInteger
+    pub from: u32,
+    pub to: u32,
+    pub header: Blob, //ByteString hash
+    pub txs: Blob,    //ByteString hash
+    pub target: Blob, //BigInteger
 }
 
 type Jobs = Vec<Job>;
 type Blob = Vec<u8>;
 
-#[derive(Encode, Decode, PartialEq, Debug, Clone)]
+#[derive(Encode, Decode, PartialEq, Debug, Clone, Default)]
 pub struct SubmitResult {
     from: u32,
     to: u32,
@@ -28,13 +26,24 @@ pub struct SubmitResult {
 
 #[derive(Debug)]
 pub enum Body {
-    Job(Jobs),
+    Jobs(Jobs),
     SubmitResult(SubmitResult),
+}
+
+pub enum WorkUnit {
+    Job(Job),
+    SubmitRes(String, SubmitResult),
+}
+
+pub struct SubmitReq {
+    pub nonce: Vec<u8>, //len = 24
+    pub header: Blob,   //ByteString hash
+    pub txs: Blob,      //ByteString hash
 }
 
 impl Default for Body {
     fn default() -> Self {
-        Body::Job(Jobs::default())
+        Body::Jobs(Jobs::default())
     }
 }
 
@@ -42,7 +51,7 @@ impl Clone for Body {
     #[must_use = "cloning is often expensive and is not expected to have side effects"]
     fn clone(&self) -> Self {
         match self {
-            Body::Job(job) => Body::Job(job.clone()),
+            Body::Jobs(job) => Body::Jobs(job.clone()),
             Body::SubmitResult(ref ret) => Body::SubmitResult(ret.clone()),
         }
     }
@@ -66,12 +75,16 @@ impl Message {
             .with_fixed_int_encoding();
         let mut size = 4 + 1;
         match &body {
-            Body::Job(jobs) => {
+            Body::Jobs(jobs) => {
                 let body = bincode::encode_to_vec(jobs, option).unwrap();
             }
             Body::SubmitResult(ret) => {}
         }
         Message { len, kind, body }
+    }
+
+    pub fn job(job: Job) -> Self {
+        Message::body(Body::Jobs(vec![job]))
     }
 }
 
@@ -85,7 +98,7 @@ impl Encode for Message {
             .with_no_limit()
             .with_fixed_int_encoding();
         match &self.body {
-            Body::Job(ref jobs) => {
+            Body::Jobs(ref jobs) => {
                 let body = bincode::encode_to_vec(jobs, option)?;
                 // let mut total:u32= 0;
                 // for job in jobs {
@@ -120,7 +133,7 @@ impl Decode for Message {
             Ok(Message {
                 len: size,
                 kind,
-                body: Body::Job(job),
+                body: Body::Jobs(job),
             })
         } else {
             let ret = SubmitResult::decode(&mut decoder)?;
@@ -215,13 +228,13 @@ mod tests {
         let res = bincode::decode_from_slice::<Message, _>(decoded.as_slice(), option);
         // println!("{:?}", res);
         if let Ok(val) = res {
-            if let Body::Job(ref ret) = val.0.body {
+            if let Body::Jobs(ref ret) = val.0.body {
                 assert_eq!(ret.len(), 16);
                 let data = ret.clone().split_off(15);
                 let mut msg = Message {
                     len: 0,
                     kind: 0,
-                    body: Body::Job(vec![Job {
+                    body: Body::Jobs(vec![Job {
                         from: 10,
                         to: 20,
                         header: vec![3, 1, 1],
