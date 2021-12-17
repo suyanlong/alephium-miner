@@ -1,3 +1,4 @@
+#![feature(array_methods)]
 // #[warn(unused_variables)]
 #![allow(unused)]
 
@@ -105,11 +106,12 @@ async fn main() {
 
     // more program logic goes here...
     let (tx, mut rx) = mpsc::channel::<model::Message>(2 * config.worker_num);
-    let manager = tokio::spawn(async move {
-        let mut client = tokio::net::TcpStream::connect(address).await.unwrap();
-        let mut conn = connection::Connection::new(client);
+    let mut client = tokio::net::TcpStream::connect(address).await.unwrap();
+    // let mut conn = connection::Connection::new(client);
+    let (mut r, mut w) = connection::pair(client);
+    let left_half = tokio::spawn(async move {
         loop {
-            match conn.read_frame().await {
+            match r.read_frame().await {
                 Ok(val) => match val {
                     Some(val) => {
                         if let Frame::Bulk(bytes) = val {
@@ -123,14 +125,17 @@ async fn main() {
                 },
                 Err(err) => error!("read_frame error {}", err),
             }
-            if let Some(val) = rx.recv().await {
-                let data = bincode::encode_to_vec(val, option).expect("encode_to_vec msg error");
-                //send server
-                if let Err(err) = conn.write_frame(&Frame::Bulk(data.into())).await {
-                    error!("write_frame error {}", err);
-                }
+        }
+    });
+    let right_half = tokio::spawn(async move {
+        if let Some(val) = rx.recv().await {
+            let data = bincode::encode_to_vec(val, option).expect("encode_to_vec msg error");
+            //send server
+            if let Err(err) = w.write_frame(&Frame::Bulk(data.into())).await {
+                error!("write_frame error {}", err);
             }
         }
     });
-    manager.await;
+    left_half.await;
+    right_half.await;
 }

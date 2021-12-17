@@ -15,6 +15,7 @@ pub struct Worker {
     miner_hash_limit: u64,            //单次任务挖矿最大限制，主动放弃当前任务。
     is_free: Arc<atomic::AtomicBool>, //被动通知需要下拉最新的任务。
     current_task: model::Job,         //当前计算的任务
+    nonce: [u8; 24],                  //nonce
 }
 
 pub struct ArcRef {
@@ -26,13 +27,22 @@ impl Worker {
     fn start() {}
 
     fn work() {}
-    fn reset() {}
+    fn reset(&mut self) {
+        self.reset_nonce()
+    }
 
     fn arc_ref(&self) -> ArcRef {
         ArcRef {
             worker_id: self.worker_id.clone(),
             is_free: self.is_free.clone(),
         }
+    }
+
+    fn reset_nonce(&mut self) {
+        self.nonce = self.nonce.each_mut().map(|mut val| {
+            *val = rand::random::<u8>();
+            *val
+        });
     }
 
     fn mining(&mut self) {
