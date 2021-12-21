@@ -13,6 +13,7 @@ extern crate num_cpus;
 extern crate log;
 extern crate blake3;
 extern crate chrono;
+extern crate crossbeam;
 extern crate env_logger;
 extern crate threadpool;
 extern crate tokio;

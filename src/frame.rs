@@ -37,7 +37,7 @@ impl Frame {
 
     /// The message has already been validated with `check`.
     pub fn parse(src: &mut Cursor<&[u8]>) -> Result<Frame, Error> {
-        src.advance(4);
+        // src.advance(4);
         let data = Bytes::copy_from_slice(&src.chunk());
         Ok(Frame::Bulk(data))
     }

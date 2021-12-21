@@ -7,9 +7,12 @@ use blake3;
 use blake3::{hash, Hash};
 use chrono;
 use chrono::Timelike;
+use crossbeam::channel;
+use crossbeam::queue;
 use futures::future::join;
 use std::collections::HashMap;
 use std::mem::take;
+use std::sync::atomic::AtomicU32;
 use std::sync::mpsc as stdmpsc;
 use std::sync::{atomic, Arc};
 use std::thread::sleep;
@@ -24,31 +27,33 @@ pub struct Worker {
     miner_hash_limit: u64,            //单次任务挖矿最大限制，主动放弃当前任务。
     current_nonce: [u8; 24],          //当前nonce
     increase_nonce: u64,              //递增值
-    is_free: Arc<atomic::AtomicBool>, //被动通知需要下拉最新的任务。
+    is_free: Arc<atomic::AtomicBool>, //被动通知需要下拉最新的任务。true: 被通知，false: 不需要。
     sender: mpsc::Sender<Task>,       //???
-    rx: stdmpsc::Receiver<model::WorkUnit>,
-    tx: stdmpsc::Sender<model::WorkUnit>,
+    rx: channel::Receiver<model::WorkUnit>,
     // current_task: Task,                   //当前计算的任务
 }
 
-pub struct ArcRef {
+#[derive(Default)]
+pub struct Notifier {
     id: String,
     is_free: Arc<atomic::AtomicBool>,
-    tx: stdmpsc::Sender<model::WorkUnit>,
 }
 
-impl ArcRef {
-    pub fn work_id(&self) -> String {
-        self.id.clone()
+impl Notifier {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn notify(&mut self) {
+        self.is_free.store(true, atomic::Ordering::Relaxed);
     }
 }
 
 impl Worker {
-    pub fn new(sender: Sender<Task>) -> Worker {
-        let (tx, rx) = stdmpsc::channel();
+    pub fn new(sender: Sender<Task>, rx: channel::Receiver<model::WorkUnit>) -> Worker {
         Worker {
             worker_id: uuid::Uuid::default().to_string(),
-            miner_hash_limit: 1000000,
+            miner_hash_limit: constant::MINING_STEPS,
             is_free: Arc::new(Default::default()),
             // current_task: Default::default(),
             current_nonce: Default::default(),
@@ -56,19 +61,19 @@ impl Worker {
             increase_nonce: 0,
             sender,
             rx,
-            tx,
         }
     }
 
     pub fn work(&mut self) {
         match self.rx.recv() {
             Ok(val) => match val {
-                WorkUnit::Job(mut job) => {
-                    let (status, count) = self.mining(&mut job);
+                WorkUnit::TaskReq(mut task) => {
+                    let job = task.job();
+                    let (status, count) = self.mining(job);
                     info!("worker id: {}, from: {}, to: {}, target: {:?}, header: {:?}, current_nonce: {:?}, status: {}",
                            self.worker_id,job.from,job.to,job.target,job.header,self.current_nonce,status);
-                    let task = Task::new()
-                        .with_job(job.clone())
+                    let task = task
+                        .with_worker_id(self.worker_id.clone())
                         .with_nonce(self.current_nonce)
                         .with_status(status)
                         .with_hash_count(count)
@@ -78,7 +83,9 @@ impl Worker {
                     self.counter.inc_hash_count(count);
                     self.sender.blocking_send(task);
                 }
-                WorkUnit::SubmitRes(id, ret) => {}
+                WorkUnit::TaskRes(job_id, ret) => {
+                    //应答
+                }
             },
             Err(err) => {
                 error!("worker: {} recv data error: {}", self.worker_id, err);
@@ -96,7 +103,9 @@ impl Worker {
 
     fn mining(&mut self, job: &mut Job) -> (usize, u64) {
         use std::sync::atomic;
-        let mut count = 0;
+        let mut step_count = 0;
+        let mut total_count = 0;
+        self.is_free.store(false, atomic::Ordering::Relaxed);
         loop {
             let double_hash = self.double2(job);
             let is = Worker::check_hash(
@@ -106,24 +115,30 @@ impl Worker {
                 job.to.clone(),
             );
             self.increase_nonce();
-            count += 1;
+            step_count += 1;
+            total_count += 1;
             if is {
-                break (0, count);
+                break (0, total_count);
             }
-            if count > self.miner_hash_limit {
-                break (1, count);
+            if step_count > self.miner_hash_limit {
+                if !self.rx.is_empty() {
+                    break (1, total_count);
+                }
+                if self.is_free.load(atomic::Ordering::Relaxed) {
+                    break (1, total_count);
+                }
+                step_count = 0;
             }
-            if self.is_free.load(atomic::Ordering::Relaxed) {
-                break (2, count);
+            if total_count > self.miner_hash_limit * 100 {
+                break (2, total_count);
             }
         }
     }
 
-    pub fn arc_ref(&self) -> ArcRef {
-        ArcRef {
+    pub fn notifier(&self) -> Notifier {
+        Notifier {
             id: self.worker_id.clone(),
             is_free: self.is_free.clone(),
-            tx: self.tx.clone(),
         }
     }
 

@@ -1,3 +1,4 @@
+use crate::task::Task;
 use bincode::enc::write::Writer;
 use bincode::{
     config::Configuration, de::Decoder, enc::Encoder, error::DecodeError, error::EncodeError,
@@ -14,31 +15,52 @@ pub struct Job {
     pub target: Blob, //BigInteger
 }
 
-type Jobs = Vec<Job>;
-type Blob = Vec<u8>;
+pub type Jobs = Vec<Job>;
+pub type Blob = Vec<u8>;
+
+#[derive(Encode, Decode, PartialEq, Debug, Clone, Default)]
+pub struct SubmitReq {
+    pub nonce: Vec<u8>, //len = 24
+    pub header: Blob,   //ByteString hash
+    pub txs: Blob,      //ByteString hash
+}
+
+impl From<Task> for SubmitReq {
+    fn from(t: Task) -> Self {
+        // todo!()
+        let nonce = t.nonce().to_vec();
+        let job = t.get_job();
+        SubmitReq {
+            nonce,
+            header: job.header,
+            txs: job.txs,
+        }
+    }
+}
 
 #[derive(Encode, Decode, PartialEq, Debug, Clone, Default)]
 pub struct SubmitResult {
-    from: u32,
-    to: u32,
-    status: bool,
+    pub from: u32,
+    pub to: u32,
+    pub status: bool,
 }
 
 #[derive(Debug)]
 pub enum Body {
     Jobs(Jobs),
+    SubmitReq(SubmitReq),
     SubmitResult(SubmitResult),
 }
 
-pub enum WorkUnit {
-    Job(Job),
-    SubmitRes(String, SubmitResult),
+impl From<Message> for Body {
+    fn from(msg: Message) -> Self {
+        msg.body
+    }
 }
 
-pub struct SubmitReq {
-    pub nonce: Vec<u8>, //len = 24
-    pub header: Blob,   //ByteString hash
-    pub txs: Blob,      //ByteString hash
+pub enum WorkUnit {
+    TaskReq(Task),
+    TaskRes(u64, bool),
 }
 
 impl Default for Body {
@@ -47,17 +69,7 @@ impl Default for Body {
     }
 }
 
-impl Clone for Body {
-    #[must_use = "cloning is often expensive and is not expected to have side effects"]
-    fn clone(&self) -> Self {
-        match self {
-            Body::Jobs(job) => Body::Jobs(job.clone()),
-            Body::SubmitResult(ref ret) => Body::SubmitResult(ret.clone()),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct Message {
     len: u32, //len = len(kind) + len(body)[👌];len = len + len(kind) + len(body)[🤯];
     kind: u8, //1 = Jobs ; 0 = SubmitResult
@@ -65,26 +77,12 @@ pub struct Message {
 }
 
 impl Message {
-    fn body(body: Body) -> Message {
-        let mut len: u32 = 0;
-        let mut kind: u8 = 0;
-        let option = bincode::config::Configuration::standard()
-            .with_big_endian()
-            .with_no_limit()
-            .write_fixed_array_length()
-            .with_fixed_int_encoding();
-        let mut size = 4 + 1;
-        match &body {
-            Body::Jobs(jobs) => {
-                let body = bincode::encode_to_vec(jobs, option).unwrap();
-            }
-            Body::SubmitResult(ret) => {}
+    pub fn submit_req(req: SubmitReq) -> Self {
+        Message {
+            len: 0,
+            kind: 0,
+            body: Body::SubmitReq(req),
         }
-        Message { len, kind, body }
-    }
-
-    pub fn job(job: Job) -> Self {
-        Message::body(Body::Jobs(vec![job]))
     }
 }
 
@@ -110,6 +108,13 @@ impl Encode for Message {
                 (size as u32).encode(&mut encoder)?;
                 (0 as u8).encode(&mut encoder)?;
                 jobs.encode(encoder)
+            }
+            Body::SubmitReq(ret) => {
+                let body = bincode::encode_to_vec(ret, option)?;
+                size += (body.len() as u32);
+                (size as u32).encode(&mut encoder)?;
+                (0 as u8).encode(&mut encoder)?;
+                ret.encode(encoder)
             }
             Body::SubmitResult(ret) => {
                 size += (4 + 4 + 1);
