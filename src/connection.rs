@@ -68,8 +68,6 @@ impl Reader {
             // total = 4 + body.length ++ body
             let mut buf = Cursor::new(&self.buffer[..]);
             let size = buf.get_u32() as usize;
-            // info!("--size = {}", size);
-            // info!("--remaining = {}", buf.remaining());
             let remain = buf.remaining();
             if size <= remain {
                 let (left, right) = self.buffer.split_at(size + 4);

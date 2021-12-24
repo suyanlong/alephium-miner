@@ -112,7 +112,7 @@ impl Encode for Message {
                 size += len;
                 (size as u32).encode(&mut encoder)?;
                 (0 as u8).encode(&mut encoder)?;
-                // (len as u32).encode(&mut encoder)?;
+                (len as u32).encode(&mut encoder)?;
                 ret.encode(encoder)
             }
             Body::SubmitResult(ret) => {
@@ -174,8 +174,6 @@ impl Decode for Message {
 //VarintEncoding 动态类型：len(4字节) + data(bytes)
 //Fixed type:size::of(val)
 //vec<T> 类型是动态的
-
-// broker_ip = 127.0.0.1, port = 10973
 
 #[cfg(test)]
 mod tests {

@@ -10,7 +10,6 @@ use std::sync::Arc;
 use threadpool;
 use tokio::sync::mpsc;
 
-//整个矿工的算力（整个机器的算力）
 pub struct Miner {
     pool: threadpool::ThreadPool,
     conf: config::Config,
@@ -47,20 +46,16 @@ impl Miner {
 
         let left_half = tokio::spawn(async move {
             loop {
-                // info!("------------read_frame-------------");
                 match r.read_frame().await {
                     Ok(val) => match val {
                         Some(val) => {
-                            // info!("------------read_frame----111---------");
                             if let Frame::Bulk(bytes) = val {
-                                // println!("----------{:?}", bytes.len());
                                 let (msg, size) = bincode::decode_from_slice::<Message, _>(
                                     bytes.as_ref(),
                                     option,
                                 )
                                 .expect("decode_from_slice msg error");
                                 //send Scheduler
-                                // info!("-====--------------size--{:?}", size);
                                 scheduler_tx_clone.send(Unit::MSG(msg)).await;
                             }
                         }
@@ -73,7 +68,8 @@ impl Miner {
         let right_half = tokio::spawn(async move {
             loop {
                 if let Some(val) = tcp_rx.recv().await {
-                    scheduler_tx.send(Unit::TASK(val.clone())).await; //send Scheduler
+                    //send Scheduler
+                    scheduler_tx.send(Unit::TASK(val.clone())).await;
                     if val.status() == 0 {
                         let msg = Message::submit_req(val.into());
                         let data =
