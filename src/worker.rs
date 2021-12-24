@@ -5,7 +5,6 @@ use crate::model::{Job, WorkUnit};
 use crate::task::Task;
 use blake3;
 use blake3::Hash;
-use chrono;
 use crossbeam::channel;
 use std::sync::atomic;
 use std::sync::Arc;
@@ -19,7 +18,7 @@ pub struct Worker {
     counter: Counter,                 //统计器
     miner_hash_limit: u64,            //单次任务挖矿最大限制，主动放弃当前任务。
     current_nonce: [u8; 24],          //当前nonce
-    increase_nonce: u64,              //递增值
+    increase_nonce: u128,             //递增值
     is_free: Arc<atomic::AtomicBool>, //被动通知需要下拉最新的任务。true: 被通知，false: 不需要。
     sender: mpsc::Sender<Task>,       //???
     rx: channel::Receiver<model::WorkUnit>,
@@ -79,7 +78,6 @@ impl Worker {
                         .build();
 
                     self.counter.add(task.clone());
-                    self.counter.inc_hash_count(count);
                     self.sender.blocking_send(task).unwrap();
                 }
                 WorkUnit::TaskRes(job_id, ret) => {
@@ -94,6 +92,7 @@ impl Worker {
 
     fn increase_nonce(&mut self) {
         self.increase_nonce += 1;
+        self.current_nonce[..16].copy_from_slice(&u128::to_be_bytes(self.increase_nonce));
     }
 
     fn reset(&mut self) {
@@ -101,14 +100,12 @@ impl Worker {
     }
 
     fn mining(&mut self, job: &mut Job) -> (usize, u64) {
-        use std::sync::atomic;
         let mut step_count = 0;
         let mut total_count = 0;
         self.is_free.store(false, atomic::Ordering::Relaxed);
         loop {
-            // info!("---------------count = {}",total_count);
-            let double_hash = self.double2(job);
             self.increase_nonce();
+            let double_hash = self.double2(job);
             step_count += 2;
             total_count += 2;
             let is = Worker::check_hash(
@@ -128,6 +125,7 @@ impl Worker {
                     break (1, total_count);
                 }
                 step_count = 0;
+                // info!("work id {} mining", self.worker_id);
             }
             if total_count > self.miner_hash_limit * 100000 {
                 if !self.rx.is_empty() {
@@ -167,7 +165,7 @@ impl Worker {
         let zero_len = 32 - target.len();
         let (zero_hash, non_zero_hash) = hash.split_at(zero_len);
         for zero in zero_hash {
-            if *zero != 0u8 {
+            if *zero != 0 {
                 return false;
             }
         }
@@ -188,7 +186,7 @@ impl Worker {
     }
 
     fn check_index(hash: Vec<u8>, from: u32, to: u32) -> bool {
-        let big_index = (hash[31] % (constant::CHAIN_NUMS as u8)) as u32;
+        let big_index = (hash[31] % constant::CHAIN_NUMS) as u32;
         (big_index / constant::GROUP_NUMS == from) && (big_index % constant::GROUP_NUMS == to)
     }
 
@@ -201,7 +199,7 @@ impl Worker {
     }
 
     fn chain_index(from: u32, to: u32) -> u32 {
-        from * constant::CHAIN_NUMS + to
+        from * (constant::CHAIN_NUMS as u32) + to
     }
 }
 

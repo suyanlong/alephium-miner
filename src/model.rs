@@ -24,7 +24,6 @@ pub struct SubmitReq {
 
 impl From<Task> for SubmitReq {
     fn from(t: Task) -> Self {
-        // todo!()
         let nonce = t.nonce().to_vec();
         let job = t.get_job();
         SubmitReq {
@@ -93,8 +92,7 @@ impl Message {
 impl Encode for Message {
     /// Encode a given type.
     fn encode<E: Encoder>(&self, mut encoder: E) -> Result<(), EncodeError> {
-        // let mut size:u32 = 4 + 1 ; //字节数?
-        let mut size: u32 = 1; //字节数
+        let mut size: u32 = 1;
         let option = bincode::config::Configuration::standard()
             .with_big_endian()
             .with_no_limit()
@@ -102,12 +100,6 @@ impl Encode for Message {
         match &self.body {
             Body::Jobs(ref jobs) => {
                 let body = bincode::encode_to_vec(jobs, option)?;
-                // let mut total:u32= 0;
-                // for job in jobs {
-                //     total += (4 * 5  + job.target.len() + job.header.len() + job.txs.len()) as u32;
-                // }
-                // println!("total := {:?}",total);
-                // println!("body.len() := {:?}",body.len());
                 size += body.len() as u32;
                 (size as u32).encode(&mut encoder)?;
                 (0 as u8).encode(&mut encoder)?;
@@ -115,18 +107,18 @@ impl Encode for Message {
             }
             Body::SubmitReq(ret) => {
                 let body = bincode::encode_to_vec(ret, option)?;
-                size += body.len() as u32;
+                // size += 4;
+                let len = body.len() as u32;
+                size += len;
                 (size as u32).encode(&mut encoder)?;
                 (0 as u8).encode(&mut encoder)?;
+                // (len as u32).encode(&mut encoder)?;
                 ret.encode(encoder)
             }
             Body::SubmitResult(ret) => {
                 size += 4 + 4 + 1;
-                // let len = std::mem::size_of::<SubmitResult>();
-                // size += (len / 8) as u32;
                 (size as u32).encode(&mut encoder)?;
                 (1 as u8).encode(&mut encoder)?;
-                // (len as u32).encode(&mut encoder)?;
                 ret.encode(encoder)
             }
         }

@@ -60,7 +60,7 @@ impl Miner {
                                 )
                                 .expect("decode_from_slice msg error");
                                 //send Scheduler
-                                info!("-====--------------size--{:?}", size);
+                                // info!("-====--------------size--{:?}", size);
                                 scheduler_tx_clone.send(Unit::MSG(msg)).await;
                             }
                         }
@@ -72,15 +72,16 @@ impl Miner {
         });
         let right_half = tokio::spawn(async move {
             loop {
-                // info!("------------let Some(val) = tcp_rx.recv()-------------");
                 if let Some(val) = tcp_rx.recv().await {
                     scheduler_tx.send(Unit::TASK(val.clone())).await; //send Scheduler
-                    let msg = Message::submit_req(val.into());
-                    let data =
-                        bincode::encode_to_vec(msg, option).expect("encode_to_vec msg error");
-                    //send server
-                    if let Err(err) = w.write_frame(&Frame::Bulk(data.into())).await {
-                        error!("write_frame error {}", err);
+                    if val.status() == 0 {
+                        let msg = Message::submit_req(val.into());
+                        let data =
+                            bincode::encode_to_vec(msg, option).expect("encode_to_vec msg error");
+                        //send server
+                        if let Err(err) = w.write_frame(&Frame::Bulk(data)).await {
+                            error!("write_frame error {}", err);
+                        }
                     }
                 }
             }
@@ -117,8 +118,8 @@ enum Unit {
 pub struct Scheduler {
     rx: Option<mpsc::Receiver<Unit>>,
     sender: Option<crossbeam::channel::Sender<WorkUnit>>,
-    notifier: Vec<Arc<Notifier>>, //key:values => work_id:(ref,task_count)
-    pending_tasks: Vec<(Task, bool)>, //(job,mark,work_id)
+    notifier: Vec<Arc<Notifier>>,
+    pending_tasks: Vec<(Task, bool)>,
 }
 
 impl Scheduler {
@@ -153,8 +154,7 @@ impl Scheduler {
                             Body::Jobs(jobs) => {
                                 //dispatch job
                                 for job in jobs {
-                                    let task = Task::new().with_job(job.clone());
-                                    // info!("---task id = {}---",task.task_id());
+                                    let task = Task::new().with_job(job);
                                     self.sender
                                         .as_ref()
                                         .unwrap()
@@ -164,7 +164,7 @@ impl Scheduler {
                             }
                             Body::SubmitResult(ret) => {
                                 let key = format!("{}-{}", ret.from, ret.to);
-                                error!("SubmitResult error: {}", key);
+                                info!("SubmitResult info: {}", key);
                             }
                             _ => unreachable!(),
                         }
