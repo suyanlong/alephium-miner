@@ -1,15 +1,13 @@
-use bytes::{Buf, Bytes};
-use futures::future::ok;
-use std::convert::TryInto;
+use bytes::Buf;
 use std::fmt;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
 
 #[derive(Clone, Debug)]
 pub enum Frame {
     Error(String),
-    Bulk(Bytes),
+    Bulk(Vec<u8>),
 }
 
 #[derive(Debug)]
@@ -26,20 +24,11 @@ impl Frame {
     pub fn check(src: &mut Cursor<&[u8]>) -> Result<(), Error> {
         let size = src.get_u32() as usize;
         let remain = src.remaining();
-        if size < remain {
-            Err(Error::Incomplete)
-        } else if size == remain {
+        if size <= remain {
             Ok(())
         } else {
-            Err(format!("protocol error; invalid frame type byte").into())
+            Err(Error::Incomplete)
         }
-    }
-
-    /// The message has already been validated with `check`.
-    pub fn parse(src: &mut Cursor<&[u8]>) -> Result<Frame, Error> {
-        // src.advance(4);
-        let data = Bytes::copy_from_slice(&src.chunk());
-        Ok(Frame::Bulk(data))
     }
 }
 

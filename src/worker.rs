@@ -1,24 +1,17 @@
+use crate::constant;
 use crate::counter::Counter;
 use crate::model;
 use crate::model::{Job, WorkUnit};
 use crate::task::Task;
-use crate::{constant, Message};
 use blake3;
-use blake3::{hash, Hash};
+use blake3::Hash;
 use chrono;
-use chrono::Timelike;
 use crossbeam::channel;
-use crossbeam::queue;
-use futures::future::join;
-use std::collections::HashMap;
-use std::mem::take;
-use std::sync::atomic::AtomicU32;
-use std::sync::mpsc as stdmpsc;
-use std::sync::{atomic, Arc};
-use std::thread::sleep;
+use std::sync::atomic;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
-use uuid;
+use uuid::Uuid;
 
 //单个线程的算力
 pub struct Worker {
@@ -52,7 +45,7 @@ impl Notifier {
 impl Worker {
     pub fn new(sender: Sender<Task>, rx: channel::Receiver<model::WorkUnit>) -> Worker {
         Worker {
-            worker_id: uuid::Uuid::default().to_string(),
+            worker_id: Uuid::new_v4().to_string(),
             miner_hash_limit: constant::MINING_STEPS,
             is_free: Arc::new(Default::default()),
             // current_task: Default::default(),
@@ -65,10 +58,16 @@ impl Worker {
     }
 
     pub fn work(&mut self) {
-        match self.rx.recv() {
+        let mut ret = Ok(WorkUnit::default());
+        {
+            ret = self.rx.recv();
+        }
+        match ret {
             Ok(val) => match val {
                 WorkUnit::TaskReq(mut task) => {
+                    info!("worker id: {}, task id: {}", self.worker_id, task.task_id());
                     let job = task.job();
+
                     let (status, count) = self.mining(job);
                     info!("worker id: {}, from: {}, to: {}, target: {:?}, header: {:?}, current_nonce: {:?}, status: {}",
                            self.worker_id,job.from,job.to,job.target,job.header,self.current_nonce,status);
@@ -81,7 +80,7 @@ impl Worker {
 
                     self.counter.add(task.clone());
                     self.counter.inc_hash_count(count);
-                    self.sender.blocking_send(task);
+                    self.sender.blocking_send(task).unwrap();
                 }
                 WorkUnit::TaskRes(job_id, ret) => {
                     //应答
@@ -107,30 +106,34 @@ impl Worker {
         let mut total_count = 0;
         self.is_free.store(false, atomic::Ordering::Relaxed);
         loop {
+            // info!("---------------count = {}",total_count);
             let double_hash = self.double2(job);
+            self.increase_nonce();
+            step_count += 2;
+            total_count += 2;
             let is = Worker::check_hash(
                 double_hash,
                 job.target.clone(),
                 job.from.clone(),
                 job.to.clone(),
             );
-            self.increase_nonce();
-            step_count += 1;
-            total_count += 1;
             if is {
                 break (0, total_count);
             }
             if step_count > self.miner_hash_limit {
-                if !self.rx.is_empty() {
-                    break (1, total_count);
-                }
+                // if !self.rx.is_empty() {
+                //     break (1, total_count);
+                // }
                 if self.is_free.load(atomic::Ordering::Relaxed) {
                     break (1, total_count);
                 }
                 step_count = 0;
             }
-            if total_count > self.miner_hash_limit * 100 {
-                break (2, total_count);
+            if total_count > self.miner_hash_limit * 100000 {
+                if !self.rx.is_empty() {
+                    break (2, total_count);
+                }
+                // break (2, total_count);
             }
         }
     }

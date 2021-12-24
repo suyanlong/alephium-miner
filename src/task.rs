@@ -4,8 +4,6 @@ use crate::model::Job;
 
 use chrono;
 use chrono::Timelike;
-use std::collections::HashMap;
-use std::process::id;
 
 #[derive(Debug, Clone, Default)]
 pub struct Task {

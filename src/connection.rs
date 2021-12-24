@@ -1,10 +1,9 @@
-use super::frame::Error::Incomplete;
 use super::frame::Frame;
 use crate::frame::Error;
-use bytes::{Buf, BytesMut};
+use bytes::Buf;
 use std::io::{self, Cursor};
 use std::result::Result;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 
@@ -44,38 +43,47 @@ impl Writer {
 pub struct Reader {
     stream: OwnedReadHalf,
     // The buffer for reading frames.
-    buffer: BytesMut,
+    // buffer: BytesMut,
+    buffer: Vec<u8>,
+    cursor: usize,
 }
 
 impl Reader {
     pub async fn read_frame(&mut self) -> Result<Option<Frame>, Error> {
         loop {
-            if let Some(frame) = self.parse_frame()? {
-                return Ok(Some(frame));
-            }
-            if 0 == self.stream.read_buf(&mut self.buffer).await? {
-                if self.buffer.is_empty() {
-                    return Ok(None);
+            // Read into the buffer, tracking the number of bytes read
+            let n = self.stream.read(&mut self.buffer[self.cursor..]).await?;
+            if 0 == n {
+                return if self.cursor == 0 {
+                    Ok(None)
                 } else {
-                    return Err("connection reset by peer".into());
-                }
+                    Err("connection reset by peer".into())
+                };
+            } else {
+                // Update our cursor
+                self.cursor += n;
             }
-        }
-    }
 
-    fn parse_frame(&mut self) -> Result<Option<Frame>, Error> {
-        let mut buf = Cursor::new(&self.buffer[..]);
-        match Frame::check(&mut buf) {
-            Ok(_) => {
-                let len = buf.position() as usize;
-                buf.set_position(0);
-                let frame = Frame::parse(&mut buf)?;
-                self.buffer.advance(len);
+            // Bytes.from(body.length) ++ body
+            // total = 4 + body.length ++ body
+            let mut buf = Cursor::new(&self.buffer[..]);
+            let size = buf.get_u32() as usize;
+            // info!("--size = {}", size);
+            // info!("--remaining = {}", buf.remaining());
+            let remain = buf.remaining();
+            if size <= remain {
+                let (left, right) = self.buffer.split_at(size + 4);
+                let data = left.into();
+                self.buffer = self.buffer.split_off(size + 4);
+                self.cursor = self.cursor - size - 4;
                 // Return the parsed frame to the caller.
-                Ok(Some(frame))
+                return Ok(Some(Frame::Bulk(data)));
             }
-            Err(Incomplete) => Ok(None),
-            Err(e) => Err(e.into()),
+            // Ensure the buffer has capacity
+            if self.buffer.len() == self.cursor {
+                // Grow the buffer
+                self.buffer.resize(self.cursor * 2, 0);
+            }
         }
     }
 }
@@ -85,7 +93,10 @@ pub fn pair(stream: TcpStream) -> (Reader, Writer) {
     (
         Reader {
             stream: r,
-            buffer: BytesMut::with_capacity(4 * 1024),
+            // buffer: BytesMut::with_capacity(4 * 1024),
+            // Allocate the buffer with 4kb of capacity.
+            buffer: vec![0; 4096],
+            cursor: 0,
         },
         Writer {
             stream: BufWriter::new(w),

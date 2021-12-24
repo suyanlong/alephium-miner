@@ -1,23 +1,14 @@
 use crate::counter::Counter;
-use crate::miner::Unit::MSG;
 use crate::model::Body;
-use crate::model::WorkUnit::TaskReq;
-use crate::model::{Job, Jobs, WorkUnit};
+use crate::model::WorkUnit;
 use crate::task::Task;
 use crate::worker::{Notifier, Worker};
-use crate::{config, connection, model, Frame, Message};
-use chrono::Timelike;
+use crate::{config, connection, Frame, Message};
 use crossbeam;
-use std::borrow::Borrow;
-use std::cell::{RefCell, RefMut};
 use std::clone::Clone;
-use std::cmp::min_by;
-use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
-use std::sync::{atomic, Arc};
+use std::sync::Arc;
 use threadpool;
 use tokio::sync::mpsc;
-use uuid::Uuid;
 
 //整个矿工的算力（整个机器的算力）
 pub struct Miner {
@@ -48,24 +39,28 @@ impl Miner {
             .with_no_limit()
             .with_fixed_int_encoding();
         let address = format!("{}:{}", self.conf.ip, self.conf.port);
-        let mut client = tokio::net::TcpStream::connect(address).await.unwrap();
+        let client = tokio::net::TcpStream::connect(address).await.unwrap();
         let (tcp_tx, mut tcp_rx) = mpsc::channel::<Task>(100 * self.conf.worker_num);
-        let (scheduler_tx, mut scheduler_rx) = mpsc::channel::<Unit>(100 * self.conf.worker_num);
+        let (scheduler_tx, scheduler_rx) = mpsc::channel::<Unit>(100 * self.conf.worker_num);
         let scheduler_tx_clone = scheduler_tx.clone();
         let (mut r, mut w) = connection::pair(client);
 
         let left_half = tokio::spawn(async move {
             loop {
+                // info!("------------read_frame-------------");
                 match r.read_frame().await {
                     Ok(val) => match val {
                         Some(val) => {
+                            // info!("------------read_frame----111---------");
                             if let Frame::Bulk(bytes) = val {
+                                // println!("----------{:?}", bytes.len());
                                 let (msg, size) = bincode::decode_from_slice::<Message, _>(
                                     bytes.as_ref(),
                                     option,
                                 )
                                 .expect("decode_from_slice msg error");
                                 //send Scheduler
+                                info!("-====--------------size--{:?}", size);
                                 scheduler_tx_clone.send(Unit::MSG(msg)).await;
                             }
                         }
@@ -77,6 +72,7 @@ impl Miner {
         });
         let right_half = tokio::spawn(async move {
             loop {
+                // info!("------------let Some(val) = tcp_rx.recv()-------------");
                 if let Some(val) = tcp_rx.recv().await {
                     scheduler_tx.send(Unit::TASK(val.clone())).await; //send Scheduler
                     let msg = Message::submit_req(val.into());
@@ -91,8 +87,10 @@ impl Miner {
         });
 
         let mut notifiters = vec![];
-        let (tx, rx) = crossbeam::channel::unbounded::<WorkUnit>();
-        for _ in [0..self.conf.worker_num] {
+        let (tx, rx) = crossbeam::channel::bounded::<WorkUnit>(100000);
+        let mut thread_count = 0;
+        while thread_count < self.conf.worker_num {
+            thread_count += 1;
             let mut worker = Worker::new(tcp_tx.clone(), rx.clone());
             let notifier = worker.notifier();
             self.pool.execute(move || worker.work());
@@ -100,7 +98,8 @@ impl Miner {
         }
         let mut scheduler = Scheduler::new()
             .with_rx(scheduler_rx)
-            .with_notifier(notifiters);
+            .with_notifier(notifiters)
+            .with_sender(tx);
 
         let scheduler = tokio::spawn(async move { scheduler.work().await });
         scheduler.await;
@@ -155,6 +154,7 @@ impl Scheduler {
                                 //dispatch job
                                 for job in jobs {
                                     let task = Task::new().with_job(job.clone());
+                                    // info!("---task id = {}---",task.task_id());
                                     self.sender
                                         .as_ref()
                                         .unwrap()

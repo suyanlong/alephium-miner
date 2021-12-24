@@ -1,9 +1,6 @@
 use crate::task::Task;
 use bincode::enc::write::Writer;
-use bincode::{
-    config::Configuration, de::Decoder, enc::Encoder, error::DecodeError, error::EncodeError,
-    Decode, Encode,
-};
+use bincode::{de::Decoder, enc::Encoder, error::DecodeError, error::EncodeError, Decode, Encode};
 use std::default::Default;
 
 #[derive(Encode, Decode, PartialEq, Debug, Clone, Default)]
@@ -45,7 +42,7 @@ pub struct SubmitResult {
     pub status: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Body {
     Jobs(Jobs),
     SubmitReq(SubmitReq),
@@ -58,9 +55,16 @@ impl From<Message> for Body {
     }
 }
 
+#[derive(Debug)]
 pub enum WorkUnit {
     TaskReq(Task),
     TaskRes(u64, bool),
+}
+
+impl Default for WorkUnit {
+    fn default() -> Self {
+        WorkUnit::TaskReq(Task::default())
+    }
 }
 
 impl Default for Body {
@@ -69,7 +73,7 @@ impl Default for Body {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Message {
     len: u32, //len = len(kind) + len(body)[👌];len = len + len(kind) + len(body)[🤯];
     kind: u8, //1 = Jobs ; 0 = SubmitResult
@@ -104,20 +108,20 @@ impl Encode for Message {
                 // }
                 // println!("total := {:?}",total);
                 // println!("body.len() := {:?}",body.len());
-                size += (body.len() as u32);
+                size += body.len() as u32;
                 (size as u32).encode(&mut encoder)?;
                 (0 as u8).encode(&mut encoder)?;
                 jobs.encode(encoder)
             }
             Body::SubmitReq(ret) => {
                 let body = bincode::encode_to_vec(ret, option)?;
-                size += (body.len() as u32);
+                size += body.len() as u32;
                 (size as u32).encode(&mut encoder)?;
                 (0 as u8).encode(&mut encoder)?;
                 ret.encode(encoder)
             }
             Body::SubmitResult(ret) => {
-                size += (4 + 4 + 1);
+                size += 4 + 4 + 1;
                 // let len = std::mem::size_of::<SubmitResult>();
                 // size += (len / 8) as u32;
                 (size as u32).encode(&mut encoder)?;

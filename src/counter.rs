@@ -2,7 +2,6 @@ use crate::task::Task;
 use chrono;
 use chrono::Timelike;
 use std::collections::HashMap;
-use std::thread::sleep;
 
 #[derive(Debug, Clone, Default)]
 pub struct Counter {

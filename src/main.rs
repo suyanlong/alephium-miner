@@ -1,14 +1,16 @@
 #![feature(array_methods)]
 // #[warn(unused_variables)]
-#![allow(unused)]
+// #![allow(unused)]
+#![feature(cursor_remaining)]
+#![feature(derive_default_enum)]
 
 #[macro_use]
 extern crate bincode;
 extern crate serde;
-#[macro_use]
-extern crate serde_derive;
+// #[macro_use]
 extern crate hex;
 extern crate num_cpus;
+extern crate serde_derive;
 #[macro_use]
 extern crate log;
 extern crate blake3;
@@ -19,6 +21,7 @@ extern crate threadpool;
 extern crate tokio;
 extern crate tokio_util;
 extern crate uuid;
+// extern crate nom;
 
 mod amd;
 mod config;
@@ -40,10 +43,7 @@ mod worker;
 use crate::frame::Frame;
 use crate::miner::Miner;
 use crate::model::Message;
-use clap::{App, Arg, SubCommand};
-use std::cmp::min;
-use tokio::io::AsyncReadExt;
-use tokio::sync::mpsc;
+use clap::{App, Arg};
 
 #[tokio::main]
 async fn main() {
