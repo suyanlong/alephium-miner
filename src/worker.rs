@@ -27,7 +27,7 @@ pub struct Worker {
 
 #[derive(Default)]
 pub struct Notifier {
-    id: String,
+    work_id: String,
     is_free: Arc<atomic::AtomicBool>,
 }
 
@@ -138,7 +138,7 @@ impl Worker {
 
     pub fn notifier(&self) -> Notifier {
         Notifier {
-            id: self.worker_id.clone(),
+            work_id: self.worker_id.clone(),
             is_free: self.is_free.clone(),
         }
     }

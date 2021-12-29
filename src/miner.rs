@@ -22,14 +22,13 @@ impl Miner {
             .with_no_limit()
             .with_fixed_int_encoding();
 
-        let mut m = Miner {
+        Miner {
             pool: threadpool::Builder::default()
                 .num_threads(conf.worker_num)
                 .thread_name(format!("{}", "miner"))
                 .build(),
             conf,
-        };
-        m
+        }
     }
 
     pub async fn work(&mut self) {

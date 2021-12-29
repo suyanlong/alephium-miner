@@ -1,8 +1,8 @@
 #![feature(array_methods)]
-// #[warn(unused_variables)]
-// #![allow(unused)]
 #![feature(cursor_remaining)]
 #![feature(derive_default_enum)]
+#![allow(private_in_public)]
+#![allow(unused)]
 
 #[macro_use]
 extern crate bincode;

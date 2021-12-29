@@ -39,7 +39,7 @@ impl Counter {
         c
     }
 
-    pub fn add(&mut self, mut task: Task) {
+    pub fn add(&mut self, task: Task) {
         self.update_count(&task);
         self.tasks.insert(task.task_id(), task);
     }
