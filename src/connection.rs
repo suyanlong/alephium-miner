@@ -1,6 +1,7 @@
 use super::frame::Frame;
 use crate::frame::Error;
 use bytes::Buf;
+use hex;
 use std::io::{self, Cursor};
 use std::result::Result;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
@@ -31,6 +32,7 @@ impl Writer {
             Frame::Bulk(val) => {
                 // let len = val.len() as u32;
                 // self.stream.write_u32(len).await?;
+                // info!("send pow: {:?}",hex::encode(val.clone()));
                 self.stream.write_all(val).await?;
             }
             _ => unreachable!(),

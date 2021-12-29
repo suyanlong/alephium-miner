@@ -72,7 +72,7 @@ impl Worker {
                            self.worker_id,job.from,job.to,job.target,job.header,self.current_nonce,status);
                     let task = task
                         .with_worker_id(self.worker_id.clone())
-                        .with_nonce(self.current_nonce)
+                        .with_nonce(self.current_nonce.clone())
                         .with_status(status)
                         .with_hash_count(count)
                         .build();
@@ -144,7 +144,7 @@ impl Worker {
     }
 
     fn reset_nonce(&mut self) {
-        self.current_nonce = self.current_nonce.each_mut().map(|mut val| {
+        self.current_nonce = self.current_nonce.each_mut().map(|val| {
             *val = rand::random::<u8>();
             *val
         });

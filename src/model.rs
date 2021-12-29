@@ -93,6 +93,7 @@ impl Encode for Message {
     /// Encode a given type.
     fn encode<E: Encoder>(&self, mut encoder: E) -> Result<(), EncodeError> {
         let mut size: u32 = 1;
+        let mut kind: u8 = 0;
         let option = bincode::config::Configuration::standard()
             .with_big_endian()
             .with_no_limit()
@@ -101,24 +102,25 @@ impl Encode for Message {
             Body::Jobs(ref jobs) => {
                 let body = bincode::encode_to_vec(jobs, option)?;
                 size += body.len() as u32;
-                (size as u32).encode(&mut encoder)?;
-                (0 as u8).encode(&mut encoder)?;
+                size.encode(&mut encoder)?;
+                kind.encode(&mut encoder)?;
                 jobs.encode(encoder)
             }
             Body::SubmitReq(ret) => {
-                let body = bincode::encode_to_vec(ret, option)?;
-                // size += 4;
-                let len = body.len() as u32;
-                size += len;
-                (size as u32).encode(&mut encoder)?;
-                (0 as u8).encode(&mut encoder)?;
-                (len as u32).encode(&mut encoder)?;
-                ret.encode(encoder)
+                let block_size = (24 + ret.header.len() + ret.txs.len()) as u32;
+                size += 4 + block_size;
+                size.encode(&mut encoder)?;
+                kind.encode(&mut encoder)?;
+                block_size.encode(&mut encoder)?;
+                encoder.writer().write(&ret.nonce);
+                encoder.writer().write(&ret.header);
+                encoder.writer().write(&ret.txs)
             }
             Body::SubmitResult(ret) => {
                 size += 4 + 4 + 1;
-                (size as u32).encode(&mut encoder)?;
-                (1 as u8).encode(&mut encoder)?;
+                kind = 1;
+                size.encode(&mut encoder)?;
+                kind.encode(&mut encoder)?;
                 ret.encode(encoder)
             }
         }
