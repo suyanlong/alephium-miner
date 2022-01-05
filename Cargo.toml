@@ -45,6 +45,8 @@ bytes = "1"
 
 anyhow = "1.0"
 
+blake3-merkle = {path = "blake3-merkle"}
+
 [build-dependencies]
 
 

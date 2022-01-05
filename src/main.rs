@@ -3,6 +3,7 @@
 #![feature(derive_default_enum)]
 #![allow(private_in_public)]
 #![allow(unused)]
+#![feature(test)]
 
 #[macro_use]
 extern crate bincode;
@@ -14,6 +15,7 @@ extern crate serde_derive;
 #[macro_use]
 extern crate log;
 extern crate blake3;
+extern crate blake3_merkle;
 extern crate chrono;
 extern crate crossbeam;
 extern crate env_logger;
@@ -24,6 +26,7 @@ extern crate uuid;
 // extern crate nom;
 
 mod amd;
+mod bencher;
 mod config;
 mod connection;
 mod constant;

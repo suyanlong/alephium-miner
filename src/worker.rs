@@ -150,7 +150,7 @@ impl Worker {
         });
     }
 
-    fn double2(&mut self, job: &Job) -> Vec<u8> {
+    fn double2(&self, job: &Job) -> Vec<u8> {
         let mut hasher = blake3::Hasher::new();
         hasher.update(&self.current_nonce);
         hasher.update(job.header.as_slice());
