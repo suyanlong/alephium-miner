@@ -11,11 +11,6 @@ pub struct Counter {
     miner_start_time: time::Instant, //每次计算任务的开始时间。
     print_setup_time: time::Instant,
     interval: u64,
-    // total_task_count: u64,     //总共接收到任务数
-    // succeed_tasks: Vec<Task>,  //成功
-    // free_tasks: Vec<Task>,     //失败
-    // miner_end_time: u32,       //每次计算任务的结束时间。
-    // miner_hash_limit: u64,     //任务挖矿最大限制，主动放弃当前任务。
 }
 
 impl Default for Counter {

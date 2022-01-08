@@ -22,7 +22,6 @@ pub struct Worker {
     is_free: Arc<atomic::AtomicBool>, //被动通知需要下拉最新的任务。true: 被通知，false: 不需要。
     sender: mpsc::Sender<Task>,       //???
     rx: channel::Receiver<model::WorkUnit>,
-    // current_task: Task,                   //当前计算的任务
 }
 
 #[derive(Default)]
@@ -81,7 +80,7 @@ impl Worker {
                     self.sender.blocking_send(task).unwrap();
                 }
                 WorkUnit::TaskRes(job_id, ret) => {
-                    //应答
+                    //TODO
                 }
             },
             Err(err) => {

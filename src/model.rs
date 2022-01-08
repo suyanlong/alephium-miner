@@ -112,8 +112,8 @@ impl Encode for Message {
                 size.encode(&mut encoder)?;
                 kind.encode(&mut encoder)?;
                 block_size.encode(&mut encoder)?;
-                encoder.writer().write(&ret.nonce);
-                encoder.writer().write(&ret.header);
+                encoder.writer().write(&ret.nonce)?;
+                let data = encoder.writer().write(&ret.header)?;
                 encoder.writer().write(&ret.txs)
             }
             Body::SubmitResult(ret) => {
@@ -148,34 +148,6 @@ impl Decode for Message {
         }
     }
 }
-
-// SubmitResult
-// [0, 0, 0, 10,
-//  1,
-//  0, 0, 0, 0,
-//  0, 0, 0, 1,
-//  1
-// ]
-
-// 传输协议:
-// message_size(4 字节) + kind（1字节） + data
-// message_size: 4 字节；整形。
-// kind:0 = JOBS or 1 = SUBMIT_RESULT;
-// data: bolb | submit_result_t
-// submit_result_t: from(4字节) + to(4字节) + status(1字节)
-// *_blob: len(4字节) + vec<u8>
-// job:  from(4字节) + to(4字节) + header_blob + txs_blob + target_blob
-// jobs: len(4字节) + job[*]
-
-//kind: 种类，结构体类型。
-//结构体：len + data。
-//bool: 1个字节。
-//字符串：len(4字节) + data(数据)。
-//总数据长度：total >= 4。
-//按结构体顺序拼接字符。
-//VarintEncoding 动态类型：len(4字节) + data(bytes)
-//Fixed type:size::of(val)
-//vec<T> 类型是动态的
 
 #[cfg(test)]
 mod tests {
