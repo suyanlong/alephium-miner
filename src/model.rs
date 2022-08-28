@@ -107,14 +107,11 @@ impl Encode for Message {
                 jobs.encode(encoder)
             }
             Body::SubmitReq(ret) => {
-                let block_size = (24 + ret.header.len() + ret.txs.len()) as u32;
-                size += 4 + block_size;
+                let req = bincode::encode_to_vec(ret, option)?;
+                size += 4 + req.len() as u32;
                 size.encode(&mut encoder)?;
                 kind.encode(&mut encoder)?;
-                block_size.encode(&mut encoder)?;
-                encoder.writer().write(&ret.nonce)?;
-                let data = encoder.writer().write(&ret.header)?;
-                encoder.writer().write(&ret.txs)
+                req.encode(&mut encoder)
             }
             Body::SubmitResult(ret) => {
                 size += 4 + 4 + 1;
