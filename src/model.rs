@@ -216,15 +216,6 @@ mod tests {
                 println!("{:?}", msg);
                 let server_message0_0 = bincode::encode_to_vec(msg, option).unwrap();
                 println!("{:?}", server_message0_0);
-                // [0, 0, 0, 38,
-                // 0,
-                // 0, 0, 0, 1,
-                // 0, 0, 0, 10,
-                // 0, 0, 0, 20,
-                // 0, 0, 0, 3, 3, 1, 1,
-                // 0, 0, 0, 3, 1, 1, 1,
-                // 0, 0, 0, 3, 1, 1, 1]
-                //4 + 1 + 3*4 + 7*3 = 5+ 12 + 21 = 38
             }
             let server_message0_0 = bincode::encode_to_vec(val.0.clone(), option);
             assert_eq!(
